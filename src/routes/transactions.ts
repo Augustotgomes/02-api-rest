@@ -55,52 +55,46 @@ export async function transactionsRoutes(app: FastifyInstance) {
 
       const { sessionId } = request.cookies
 
-      const transactions = await knex('transactions')
+      const transaction = await knex('transactions')
         .where({
           session_id: sessionId,
           id,
         })
         .first()
 
-      return { transactions }
+      return { transaction }
     },
   )
 
-  app.post(
-    '/',
-    {
-      preHandler: [checkSessionIdExists],
-    },
-    async (request, reply) => {
-      const createTransactionsBodySchema = z.object({
-        title: z.string(),
-        amount: z.number(),
-        type: z.enum(['credit', 'debit']),
+  app.post('/', async (request, reply) => {
+    const createTransactionsBodySchema = z.object({
+      title: z.string(),
+      amount: z.number(),
+      type: z.enum(['credit', 'debit']),
+    })
+
+    const { title, amount, type } = createTransactionsBodySchema.parse(
+      request.body,
+    )
+
+    let sessionId = request.cookies.sessionId
+
+    if (!sessionId) {
+      sessionId = randomUUID()
+
+      reply.cookie('sessionId', sessionId, {
+        path: '/',
+        maxAge: 60 * 60 * 24 * 7, // 1 week in seconds
       })
+    }
 
-      const { title, amount, type } = createTransactionsBodySchema.parse(
-        request.body,
-      )
+    await knex('transactions').insert({
+      id: randomUUID(),
+      title,
+      amount: type === 'credit' ? amount : amount * -1,
+      session_id: sessionId,
+    })
 
-      let sessionId = request.cookies.sessionId
-
-      if (!sessionId) {
-        sessionId = randomUUID()
-
-        reply.cookie('sessionId', sessionId, {
-          path: '/',
-          maxAge: 60 * 60 * 24 * 7, // 1 week in seconds
-        })
-      }
-
-      await knex('transactions').insert({
-        id: randomUUID(),
-        title,
-        amount: type === 'credit' ? amount : amount * -1,
-        session_id: sessionId,
-      })
-
-      return reply.status(201).send()
-    },
-  )
+    return reply.status(201).send()
+  })
 }
